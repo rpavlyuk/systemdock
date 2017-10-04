@@ -37,6 +37,7 @@ sudo systemdock -v -a add --name tomcat -d "tomcat:9.0"
 ```
 sudo systemctl start systemdock-tomcat
 ```
+**NOTE:** As you know, Docker is pulling the image from repository when the container is run for the first time. So, be patient when launching the service for the first time.
 * Check if the service is running:
 ```
 sudo systemctl status systemdock-tomcat
@@ -55,5 +56,6 @@ sudo systemdock -v -a remove --name tomcat
 ```
 
 ## TODO
+* RPM/DEB packaging
 * List all services managed by SystemDock
 * Add more container options to the config file

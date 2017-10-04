@@ -92,7 +92,9 @@ def add_service(args, cfg):
     config = dict(
        container = args.docker,
        name = args.name,
-       created = datetime.datetime.now()
+       created = datetime.datetime.now(),
+       ports = dict(),
+       volumes = dict()
     )
     with open(cfg['path']['services'] + "/" + args.name + "/config.yml", 'w') as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
@@ -152,6 +154,9 @@ def start_service(args, cfg):
     ### Now, let's try to start it
     client = docker.from_env()
 
+    # Pull the image
+    image = client.images.pull(config['container'])
+
     # Run!
     try:
         container = client.containers.get(args.name)
@@ -166,7 +171,8 @@ def start_service(args, cfg):
         client.containers.run(
                config['container'],
                 name=args.name,
-                ports=config['ports']
+                ports=config['ports'],
+                volumes=config['volumes']
            )
         logging.info("Container " + args.name + " started!")
 
