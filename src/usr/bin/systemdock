@@ -9,6 +9,7 @@ _VERSION="0.1"
 import sys, argparse, logging
 import os, shutil, errno, yaml
 import fileinput
+import datetime
 
 from argparse import ArgumentError
 
@@ -67,7 +68,7 @@ def add_service(args, cfg):
 
     # Copy template as a service file
     service_file = cfg['path']['services'] + "/" + args.name + "/systemdock-" + args.name + ".service" 
-    systemd_file = cfg['path']['systemd'] + "/" + args.name + "/systemdock-" + args.name + ".service"
+    systemd_file = cfg['path']['systemd'] + "/systemdock-" + args.name + ".service"
     shutil.copy(src=cfg['path']['template'], dst=service_file)
 
     # Replace __NAME__ with real name in the just copied template
@@ -82,6 +83,25 @@ def add_service(args, cfg):
             os.unlink(systemd_file)
         else:
             raise RuntimeError("Symlink to service file '" + systemd_file + "' exists. Enable force mode (-f) or remove the service first.")
+    # Now, let's create it
+    logging.debug("Creating symlink: [" + service_file + "] to [" + systemd_file + "]")
+    os.symlink(src=service_file, dst=systemd_file)
+
+    # Create empty mounts
+    open(cfg['path']['services'] + "/" + args.name + "/mounts", 'a').close()
+
+    # Create empty args
+    open(cfg['path']['services'] + "/" + args.name + "/args", 'a').close()
+
+    # Create configuration file
+    config = dict(
+       container = args.docker,
+       name = args.name,
+       created = datetime.datetime.now()
+    )
+    with open(cfg['path']['services'] + "/" + args.name + "/config.yml", 'w') as outfile:
+        yaml.dump(config, outfile, default_flow_style=False)
+        logging.debug("Wrote config " + cfg['path']['services'] + "/" + args.name + "/config.yml")
 
 
 # Gather our code in a main() function
