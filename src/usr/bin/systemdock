@@ -1,10 +1,88 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
+# SystemDock -- a tool to manage Docker containers as SystemD services
+# Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
 _VERSION="0.1"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
+import os, shutil, errno, yaml
+import fileinput
+
+from argparse import ArgumentError
+
+# Read configuration
+def parse_config(args, loglevel, config_file='/etc/systemdock/config.yaml'):
+    
+    # Check if file exists
+    if not os.path.isfile(config_file):
+        logging.error("Oh nooo! The configuration file " + config_file + " cannot be found :(")
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
+
+    # Read the configuration
+    logging.debug("Loading basic configuration from " + config_file)
+    with open(config_file, 'r') as ymlfile:
+        cfg = yaml.load(ymlfile)
+
+
+    return cfg
+
+# Add new service
+def add_service(args, cfg):
+
+    # Check if the arguments are set
+    if args.docker is None:
+        logging.error("Missing argument: --docker")
+        raise ArgumentError(args.docker, "Missing Docker container name")
+
+    # Say hello
+    logging.debug("Adding new service: " + args.name)
+
+    # Check if .d directory exists and we can write into it
+    if not os.path.isdir(cfg['path']['services']):
+        if args.force:
+            logging.warning("Directory " + cfg['path']['services'] + " doesn't exists but we will create it now")
+            os.makedirs(name=cfg['path']['services'], exist_ok=True)
+        else:
+            logging.error("Services' configuration directory doesn't exist!")
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), cfg['path']['services'])
+
+    # Check if profile already exists
+    if os.path.isdir(cfg['path']['services'] + "/" + args.name):
+        if args.force:
+            logging.warning("Profile directory " + cfg['path']['services'] + "/" + args.name + " exists but will be re-created because force mode is on")
+            shutil.rmtree(cfg['path']['services'] + "/" + args.name)
+        else:
+            logging.error("Service profile " + cfg['path']['services'] + "/" + args.name + " already exists!")
+            raise RuntimeError("Service profile " + cfg['path']['services'] + "/" + args.name + " already exists! Enable force mode (-f) or remove the service first.")
+
+    # Check if template exists
+    if not os.path.isfile(cfg['path']['template']):
+        logging.error("Unable to find the service template!")
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), cfg['path']['template'])
+
+    # Create service profile directory
+    os.makedirs(name=cfg['path']['services'] + "/" + args.name, exist_ok=False)
+
+    # Copy template as a service file
+    service_file = cfg['path']['services'] + "/" + args.name + "/systemdock-" + args.name + ".service" 
+    systemd_file = cfg['path']['systemd'] + "/" + args.name + "/systemdock-" + args.name + ".service"
+    shutil.copy(src=cfg['path']['template'], dst=service_file)
+
+    # Replace __NAME__ with real name in the just copied template
+    with fileinput.FileInput(service_file, inplace=True, backup='.bak') as file:
+        for line in file:
+            print(line.replace("__NAME__", args.name), end='')
+
+    # Create symbolic link to systemd directory so the service will be available to the systemd daemon
+    if os.path.isfile(systemd_file):
+        if args.force:
+            logging.warning("Symlink to service file '" + systemd_file + "' exists. Will be removed and created again")
+            os.unlink(systemd_file)
+        else:
+            raise RuntimeError("Symlink to service file '" + systemd_file + "' exists. Enable force mode (-f) or remove the service first.")
+
 
 # Gather our code in a main() function
 def main(args, loglevel):
@@ -13,8 +91,26 @@ def main(args, loglevel):
   logging.info("SystemDock version " +  _VERSION)
   logging.info("More info here: https://github.com/rpavlyuk/systemdock")
 
+  if args.force:
+      logging.warning("Force mode is ON")
+
+  # Loading the configuration
+  cfg = parse_config(args, loglevel, args.config)
+
   # Main program code
   logging.debug("Action: %s" % args.action)
+
+  # Proceed with the action
+  if args.action == 'add':
+      add_service(args, cfg)
+  elif args.action == 'remove':
+      remove_service(args, cfg)
+  elif args.action == 'start':
+      start_service(args, cfg)
+  elif args.action == 'stop':
+      stop_service(args, cfg)
+ 
+
  
 # Standard boilerplate to call the main() function to begin
 # the program.
@@ -33,6 +129,28 @@ if __name__ == '__main__':
                       "--verbose",
                       help="increase output verbosity",
                       action="store_true")
+  parser.add_argument(
+                      "-f",
+                      "--force",
+                      help="Ignore minor errors, assume 'yes' when deleting and override in case of existing",
+                      action="store_true")
+  parser.add_argument(
+                      "-c",
+                      "--config",
+                      help = "Path to main configuration file (e.g., config.yaml)",
+                      required=False,
+                      default='/etc/systemdock/config.yaml')
+  parser.add_argument(
+                      "-n",
+                      "--name",
+                      help = "Name of the service",
+                      required=True)
+  parser.add_argument(
+                      "-d",
+                      "--docker",
+                      help = "Docker container name. For example, 'jenkins/jenkins:lts'",
+                      required=False)
+
   args = parser.parse_args()
   
   # Setup logging

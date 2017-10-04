@@ -3,3 +3,5 @@
 
 path:
         services: /etc/systemdock/containers.d
+        template: /usr/share/systemdock/systemdock-container.service.template
+        systemd: /usr/lib/systemd/system

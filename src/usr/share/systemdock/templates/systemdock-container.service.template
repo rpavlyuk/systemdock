@@ -1,0 +1,16 @@
+[Unit]
+Description=__NAME__ in Docker container running as a service
+After=docker.service
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+Restart=no
+RestartSec=60s
+Type=simple
+NotifyAccess=all
+ExecStart=-/usr/bin/systemdock -v -a start -n __NAME__
+ExecStop=/usr/bin/systemdock -v -a stop -n __NAME__
+
+[Install]
+WantedBy=multi-user.target
