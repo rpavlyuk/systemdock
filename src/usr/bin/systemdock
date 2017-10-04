@@ -156,16 +156,19 @@ def start_service(args, cfg):
     try:
         container = client.containers.get(args.name)
         container.remove(force=True, v=True)
+        logging.info("Container " + args.name + " was found running and is now stopped")
     except docker.errors.NotFound:
         logging.warn("Container " + args.name + " wasn't found")
 
     # IF action is 'start' than the new container will be started. If not -- we have a perfect STOP action.
     if args.action == 'start':
+        logging.info("Starting container " + args.name + "...")
         client.containers.run(
                config['container'],
                 name=args.name,
                 ports=config['ports']
            )
+        logging.info("Container " + args.name + " started!")
 
 
 #
