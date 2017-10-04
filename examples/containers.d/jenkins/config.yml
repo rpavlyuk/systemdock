@@ -1,0 +1,10 @@
+container: jenkins/jenkins:lts
+created: 2017-10-05 00:23:15.369928
+name: jenkins
+ports:
+        8080/tcp: 8080
+        50000/tcp: 50000
+volumes:
+        /var/lib/jenkins:
+                bind: /var/jenkins_home
+                mode: rw
