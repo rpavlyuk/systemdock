@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# SystemDock -- a tool to manage Docker containers as SystemD services
+# SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
 _VERSION="0.1"
@@ -12,6 +12,8 @@ import fileinput
 import datetime
 
 from argparse import ArgumentError
+
+import docker
 
 # Read configuration
 def parse_config(args, loglevel, config_file='/etc/systemdock/config.yaml'):
@@ -86,12 +88,6 @@ def add_service(args, cfg):
     logging.debug("Creating symlink: [" + service_file + "] to [" + systemd_file + "]")
     os.symlink(src=service_file, dst=systemd_file)
 
-    # Create empty mounts
-    open(cfg['path']['services'] + "/" + args.name + "/mounts", 'a').close()
-
-    # Create empty args
-    open(cfg['path']['services'] + "/" + args.name + "/args", 'a').close()
-
     # Create configuration file
     config = dict(
        container = args.docker,
@@ -126,6 +122,59 @@ def remove_service(args, cfg):
     logging.info("Removed service " + args.name)
 
 
+#
+# Start Service
+#
+def start_service(args, cfg):
+    # Say hello
+    if args.action == 'start':
+        logging.info("Starting service " + args.name)
+    else:
+        logging.info("Stopping service " + args.name)
+
+    # Check if directory exists
+    if not os.path.isdir(cfg['path']['services'] + "/" + args.name):
+        logging.error("Service [" + args.name + "] doesn't exists: profile directory missing")
+        return False
+
+    # Read container configuration
+    config_file = cfg['path']['services'] + "/" + args.name + "/config.yml"
+    # First, check if file exists
+    if not os.path.isfile(config_file):
+        logging.error("Configuration file " + config_file + " cannot be found :(")
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
+
+    # Read the configuration
+    logging.debug("Loading profile configuration from " + config_file)
+    with open(config_file, 'r') as ymlfile:
+        config = yaml.load(ymlfile)
+
+    ### Now, let's try to start it
+    client = docker.from_env()
+
+    # Run!
+    try:
+        container = client.containers.get(args.name)
+        container.remove(force=True, v=True)
+    except docker.errors.NotFound:
+        logging.warn("Container " + args.name + " wasn't found")
+
+    # IF action is 'start' than the new container will be started. If not -- we have a perfect STOP action.
+    if args.action == 'start':
+        client.containers.run(
+               config['container'],
+                name=args.name,
+                ports=config['ports']
+           )
+
+
+#
+# Stop the service
+#
+def stop_service(args, cfg):
+
+    return start_service(args, cfg)
+
 # Gather our code in a main() function
 def main(args, loglevel):
   logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
@@ -158,14 +207,15 @@ def main(args, loglevel):
 # the program.
 if __name__ == '__main__':
   parser = argparse.ArgumentParser( 
-                                    description = "SystemDock -- a tool to manage Docker containers as SystemD services",
-                                    fromfile_prefix_chars = '@' )
+          description = "SystemDock: tool to manage Docker containers as SystemD services",
+          fromfile_prefix_chars = '@' )
   # Parameters
   parser.add_argument(
                       "-a",
                       "--action",
                       help = "Action the script has to perform",
-                      choices=['add', 'remove', 'start', 'stop'])
+                      choices=['add', 'remove', 'start', 'stop'],
+                      required=True)
   parser.add_argument(
                       "-v",
                       "--verbose",
