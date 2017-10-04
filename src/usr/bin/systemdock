@@ -26,7 +26,6 @@ def parse_config(args, loglevel, config_file='/etc/systemdock/config.yaml'):
     with open(config_file, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
-
     return cfg
 
 # Add new service
@@ -102,6 +101,29 @@ def add_service(args, cfg):
     with open(cfg['path']['services'] + "/" + args.name + "/config.yml", 'w') as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
         logging.debug("Wrote config " + cfg['path']['services'] + "/" + args.name + "/config.yml")
+
+
+#
+# Remove the service
+#
+def remove_service(args, cfg):
+
+    # Say hello
+    logging.debug("Removing service: " + args.name)
+
+    # Check if directory exists
+    if not os.path.isdir(cfg['path']['services'] + "/" + args.name):
+        logging.error("Service [" + args.name + "] doesn't exists: profile directory missing")
+        return
+
+    # remove the symlink
+    systemd_file = cfg['path']['systemd'] + "/systemdock-" + args.name + ".service"
+    os.unlink(systemd_file)
+
+    # Remove directory
+    shutil.rmtree(cfg['path']['services'] + "/" + args.name)
+
+    logging.info("Removed service " + args.name)
 
 
 # Gather our code in a main() function
