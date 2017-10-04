@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+#
+
+_VERSION="0.1"
+
+# import modules used here -- sys is a very standard one
+import sys, argparse, logging
+
+# Gather our code in a main() function
+def main(args, loglevel):
+  logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
+  
+  logging.info("SystemDock version " +  _VERSION)
+  logging.info("More info here: https://github.com/rpavlyuk/systemdock")
+
+  # Main program code
+  logging.debug("Action: %s" % args.action)
+ 
+# Standard boilerplate to call the main() function to begin
+# the program.
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser( 
+                                    description = "SystemDock -- a tool to manage Docker containers as SystemD services",
+                                    fromfile_prefix_chars = '@' )
+  # Parameters
+  parser.add_argument(
+                      "-a",
+                      "--action",
+                      help = "Action the script has to perform",
+                      choices=['add', 'remove', 'start', 'stop'])
+  parser.add_argument(
+                      "-v",
+                      "--verbose",
+                      help="increase output verbosity",
+                      action="store_true")
+  args = parser.parse_args()
+  
+  # Setup logging
+  if args.verbose:
+    loglevel = logging.DEBUG
+  else:
+    loglevel = logging.INFO
+  
+  main(args, loglevel)
