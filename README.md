@@ -3,6 +3,7 @@ Toolset to run Docker containers as systemd service on RedHat and other Linux sy
 
 ## Author and Credits
 Roman Pavlyuk <roman.pavlyuk@gmail.com>
+
 http://roman.pavlyuk.lviv.ua/
 
 ## Why would I need this?
@@ -15,13 +16,13 @@ sudo pip install docker yaml
 ```
 * Checkout the source code:
 ```
-git clone https://github.com/rpavlyuk/systemdock.git
+git clone https://github.com/rpavlyuk/systemdock.git ./
 ```
-* RedHat family users -- use RPM installer:
+* RedHat family users, use RPM installer to install the tool:
 ```
 sudo make install-rpm clean
 ```
-* Install the tool (old school way for other distros):
+* Others, install the tool using "old school" way:
 ```
 sudo make install clean
 ```
@@ -60,6 +61,6 @@ sudo systemdock -v -a remove --name tomcat
 ```
 
 ## TODO
-* RPM/DEB packaging
+* Test on other distros: Ubuntu, SUSE, etc
 * List all services managed by SystemDock
 * Add more container options to the config file
