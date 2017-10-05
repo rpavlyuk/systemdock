@@ -17,9 +17,13 @@ sudo pip install docker yaml
 ```
 git clone https://github.com/rpavlyuk/systemdock.git
 ```
-* Install the tool:
+* RedHat family users -- use RPM installer:
 ```
-sudo make install
+sudo make install-rpm clean
+```
+* Install the tool (old school way for other distros):
+```
+sudo make install clean
 ```
 * Check the confguration file ```/etc/systemdock/config.yaml``` if the settings are valid for your distribution
 
