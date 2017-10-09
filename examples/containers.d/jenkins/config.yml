@@ -8,3 +8,6 @@ volumes:
         /var/lib/jenkins:
                 bind: /var/jenkins_home
                 mode: rw
+privileged: false
+tty: false
+working_dir: /root

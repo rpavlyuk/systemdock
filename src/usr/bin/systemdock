@@ -94,7 +94,10 @@ def add_service(args, cfg):
        name = args.name,
        created = datetime.datetime.now(),
        ports = dict(),
-       volumes = dict()
+       volumes = dict(),
+       privileged = False,
+       tty = False,
+       working_dir = "/root"
     )
     with open(cfg['path']['services'] + "/" + args.name + "/config.yml", 'w') as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
@@ -172,7 +175,10 @@ def start_service(args, cfg):
                config['container'],
                 name=args.name,
                 ports=config['ports'],
-                volumes=config['volumes']
+                volumes=config['volumes'],
+                privileged=config['privileged'],
+                tty=config['tty'],
+                working_dir=config['working_dir']
            )
         logging.info("Container " + args.name + " started!")
 
