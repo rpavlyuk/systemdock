@@ -158,10 +158,14 @@ def start_service(args, cfg):
     client = docker.from_env()
 
     # Pull the image
-    image = client.images.pull(config['container'])
+    if args.action == 'start':
+        logging.info("Pulling container " + config['container'] + " ...")
+        image = client.images.pull(config['container'])
+        logging.info("Pulling complete!")
 
     # Run!
     try:
+        logging.info("Check for running instance of " + config['container'])
         container = client.containers.get(args.name)
         container.remove(force=True, v=True)
         logging.info("Container " + args.name + " was found running and is now stopped")
@@ -171,8 +175,9 @@ def start_service(args, cfg):
     # IF action is 'start' than the new container will be started. If not -- we have a perfect STOP action.
     if args.action == 'start':
         logging.info("Starting container " + args.name + "...")
-        client.containers.run(
+        container = client.containers.run(
                config['container'],
+                detach=True,
                 name=args.name,
                 ports=config['ports'],
                 volumes=config['volumes'],
@@ -182,6 +187,20 @@ def start_service(args, cfg):
            )
         logging.info("Container " + args.name + " started!")
 
+        if 'command' in config:
+            logging.debug("Found command block in container configuration")
+            if 'host' in config['command']:
+                logging.debug("Found host commands block in container configuration")
+                if 'post' in config['command']['host']:
+                    logging.info("Executing post-start command on host OS: " + config['command']['host']['post'])
+                    os.system(config['command']['host']['post'])
+            else:
+                logging.debug("Host commands not found in container configuration")
+        else:
+            logging.debug("Command block not found in container configuration")
+
+
+        print(container.logs(follow=True))
 
 #
 # Stop the service
