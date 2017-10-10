@@ -199,8 +199,15 @@ def start_service(args, cfg):
         else:
             logging.debug("Command block not found in container configuration")
 
+        # Hold the control process open
+        # So, we will read the logs over and over
+        while True:
+            try:
+                print(container.logs(follow=True, stdout=True, stderr=True))
+            except:
+                # No one cares
+                logging.debug("FIXME: Log read timeout")
 
-        print(container.logs(follow=True))
 
 #
 # Stop the service
