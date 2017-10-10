@@ -12,7 +12,7 @@ Docker is a the most prominent technology invented in the last years which makes
 ## Get Started
 * SystemDock is mostly written in Python and uses some 3rd party libraries. Let's install them first:
 ```
-sudo pip install docker yaml
+sudo pip3 install docker yaml
 ```
 * Checkout the source code:
 ```

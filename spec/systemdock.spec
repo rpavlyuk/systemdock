@@ -22,6 +22,7 @@ BuildArch:      noarch
 Requires:	python3
 Requires:	docker	
 Requires:	python-docker-py
+Requires:	python3-PyYAML
 
 %description
 Toolset to run Docker containers as systemd service on RedHat and other Linux systems
