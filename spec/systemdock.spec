@@ -21,7 +21,7 @@ BuildArch:      noarch
 
 Requires:	python3
 Requires:	docker	
-Requires:	python-docker-py
+Requires:	python3-docker-py
 Requires:	python3-PyYAML
 
 %description
