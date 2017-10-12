@@ -13,4 +13,10 @@ tty: false
 working_dir: /root
 command:
         host:
+                pre: ''
                 post: chown -R $(docker exec svarog-ci id -u jenkins | tr -d '\r'):$(docker exec svarog-ci id -g jenkins | tr -d '\r') /var/lib/jenkins
+        container:
+                post: ''
+network_mode: bridge
+environment:
+        JENKINS_HOME: /var/jenkins_home

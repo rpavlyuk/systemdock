@@ -15,6 +15,34 @@ from argparse import ArgumentError
 
 import docker
 
+# Create empty configuration
+def make_profile_config(args):
+    # Create new config
+    config = dict(
+       container = args.docker,
+       name = args.name,
+       created = datetime.datetime.now(),
+       ports = dict(),
+       volumes = dict(),
+       privileged = False,
+       tty = False,
+       working_dir = "/root",
+       command = dict(
+           host = dict(
+               pre = "",
+               post = ""
+           ),
+           container = dict(
+               pre = "",
+               post = ""
+           )
+           ),
+       network_mode = 'bridge',
+       environment = dict()
+    )
+
+    return config
+
 # Read configuration
 def parse_config(args, loglevel, config_file='/etc/systemdock/config.yaml'):
     
@@ -89,16 +117,7 @@ def add_service(args, cfg):
     os.symlink(src=service_file, dst=systemd_file)
 
     # Create configuration file
-    config = dict(
-       container = args.docker,
-       name = args.name,
-       created = datetime.datetime.now(),
-       ports = dict(),
-       volumes = dict(),
-       privileged = False,
-       tty = False,
-       working_dir = "/root"
-    )
+    config = make_profile_config(args)
     with open(cfg['path']['services'] + "/" + args.name + "/config.yml", 'w') as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
         logging.debug("Wrote config " + cfg['path']['services'] + "/" + args.name + "/config.yml")
@@ -183,7 +202,9 @@ def start_service(args, cfg):
                 volumes=config['volumes'],
                 privileged=config['privileged'],
                 tty=config['tty'],
-                working_dir=config['working_dir']
+                working_dir=config['working_dir'],
+                environment=config['environment'],
+                network_mode=config['network_mode']
            )
         logging.info("Container " + args.name + " started!")
 
