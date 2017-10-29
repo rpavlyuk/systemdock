@@ -198,6 +198,7 @@ def start_service(args, cfg):
                config['container'],
                 detach=True,
                 name=args.name,
+                hostname=args.name,
                 ports=config['ports'],
                 volumes=config['volumes'],
                 privileged=config['privileged'],
