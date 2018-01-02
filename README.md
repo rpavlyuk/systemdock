@@ -33,11 +33,23 @@ sudo make install clean
 ```
 systemdock --help
 ```
+* List all services that are currently managed by SystemDock:
+```
+systemdock -a list
+```
 * Create SystemD service from existing Docker container. For example, let's create the one for Tomcat:
 ```
 sudo systemdock -v -a add --name tomcat -d "tomcat:9.0"
 ```
 * Check out file ```/etc/systemdock/containers.d/[NAME]/config.yml``` (in our example: ```/etc/systemdock/containers.d/tomcat/config.yml```) and add additional options like port forwarding and file mounts if needed. See ```examples``` for more information on options.
+* You can check if the service is listed in those that are managed by SystemDock:
+```
+systemdock -a list
+```
+* Additionally, you can get detailed information about the specific service (profile):
+```
+systemdock -a list -n tomcat
+```
 * Now, start dockerized Tomcat as systemd service. Note, that services are being created as "systemdock-[NAME]". In our example it will be ```systemdock-tomcat```:
 ```
 sudo systemctl start systemdock-tomcat
@@ -62,5 +74,4 @@ sudo systemdock -v -a remove --name tomcat
 
 ## TODO
 * Test on other distros: Ubuntu, SUSE, etc
-* List all services managed by SystemDock
 * Add more container options to the config file
