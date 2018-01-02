@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.1"
+_VERSION="0.2"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging

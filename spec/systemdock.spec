@@ -7,7 +7,7 @@
 
 
 Name:		systemdock
-Version:	0.1
+Version:	0.2
 Release:	%{svn_revision}%{?dist}
 Summary:	Toolset to run Docker containers as systemd service
 
