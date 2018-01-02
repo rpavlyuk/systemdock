@@ -10,6 +10,7 @@ import sys, argparse, logging
 import os, shutil, errno, yaml
 import fileinput
 import datetime
+import subprocess
 
 from argparse import ArgumentError
 
@@ -63,8 +64,13 @@ def add_service(args, cfg):
 
     # Check if the arguments are set
     if args.docker is None:
-        logging.error("Missing argument: --docker")
+        logging.error("Missing command-line argument: --docker")
         raise ArgumentError(args.docker, "Missing Docker container name")
+
+    # Make sure that "name" is not missing
+    if args.name is None:
+        logging.error("Missing command-line argument: -n/--name")
+        raise ArgumentError(args.docker, "Missing profile name")
 
     # Say hello
     logging.debug("Adding new service: " + args.name)
@@ -128,6 +134,11 @@ def add_service(args, cfg):
 #
 def remove_service(args, cfg):
 
+    # Make sure that "name" is not missing
+    if args.name is None:
+        logging.error("Missing command-line argument: -n/--name")
+        raise ArgumentError(args.docker, "Missing profile name")
+
     # Say hello
     logging.debug("Removing service: " + args.name)
 
@@ -150,6 +161,12 @@ def remove_service(args, cfg):
 # Start Service
 #
 def start_service(args, cfg):
+
+    # Make sure that "name" is not missing
+    if args.name is None:
+        logging.error("Missing command-line argument: -n/--name")
+        raise ArgumentError(args.docker, "Missing profile name")
+    
     # Say hello
     if args.action == 'start':
         logging.info("Starting service " + args.name)
@@ -157,12 +174,12 @@ def start_service(args, cfg):
         logging.info("Stopping service " + args.name)
 
     # Check if directory exists
-    if not os.path.isdir(cfg['path']['services'] + "/" + args.name):
+    if not os.path.isdir(os.path.join(cfg['path']['services'], args.name)):
         logging.error("Service [" + args.name + "] doesn't exists: profile directory missing")
         return False
 
     # Read container configuration
-    config_file = cfg['path']['services'] + "/" + args.name + "/config.yml"
+    config_file = os.path.join(cfg['path']['services'], args.name, "config.yml")
     # First, check if file exists
     if not os.path.isfile(config_file):
         logging.error("Configuration file " + config_file + " cannot be found :(")
@@ -238,6 +255,127 @@ def stop_service(args, cfg):
 
     return start_service(args, cfg)
 
+#
+# List services managed by systemdock
+#
+def list_service(args, cfg):
+
+    # Let's check if user wants to see all profiles or details of the specified one
+    if args.name is None:
+        logging.info("List of all services managed by SystemDock")
+        list_all = True
+    else:
+        logging.info("Detailed information on service '%s'" % args.name)
+        list_all = False
+
+    # Proceed with either listing or showing the details
+    if list_all:
+
+        # Get profile directories list
+        profile_dirs = os.listdir(cfg['path']['services'])
+
+        # Print the list of profiles
+        for p_dir in profile_dirs:
+            # check if entry is really a directory
+            if not os.path.isdir(os.path.join(cfg['path']['services'], p_dir)):
+                logging.debug("%s is not a directory" % os.path.join(cfg['path']['services'], p_dir))
+                continue
+            # check if the folder contains profile config
+            if not os.path.isfile(os.path.join(cfg['path']['services'], p_dir, "config.yml")):
+                logging.debug("Folder %s doesn't contain profile configuration" % os.path.join(cfg['path']['services'], p_dir))
+                continue
+
+            # now, let's find the service information
+            service = "NONE"
+            service_state = "INNACTIVE"
+            service_enabled = "DISABLED"
+            for f in os.listdir(os.path.join(cfg['path']['services'], p_dir)):
+                if f.endswith(".service"):
+                    service = f
+                    break
+            if not service == 'NONE':
+                if is_service_active(service):
+                    service_state = "ACTIVE"
+                if is_service_enabled(service):
+                    service_enabled = "ENABLED"
+
+            # Print the information
+            print(p_dir + " | " + service + " | " + service_state + " | " + service_enabled)
+
+    else:
+        # let's show the details
+
+        # let's make the profile dir path
+        p_dir = os.path.join(cfg['path']['services'], args.name)
+
+        if not os.path.exists(p_dir):
+            logging.error("Profile not found: %s" % args.name)
+            return
+
+        # Read container configuration
+        config_file = os.path.join(cfg['path']['services'], args.name, "config.yml")
+        # First, check if file exists
+        if not os.path.isfile(config_file):
+            logging.error("Configuration file " + config_file + " cannot be found. That's sad...")
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
+
+        # Read the configuration
+        logging.debug("Loading profile configuration from " + config_file)
+        with open(config_file, 'r') as ymlfile:
+            config = yaml.load(ymlfile)
+
+        # now, let's find the service information
+        service = "NONE"
+        service_state = "INNACTIVE"
+        service_enabled = "DISABLED"
+        for f in os.listdir(os.path.join(cfg['path']['services'], p_dir)):
+            if f.endswith(".service"):
+                service = f
+                break
+        if not service == 'NONE':
+            if is_service_active(service):
+                service_state = "ACTIVE (RUNNING)"
+            if is_service_enabled(service):
+                service_enabled = "ENABLED"
+
+        # Okay, now let's print all the information:
+        print("Profile name: %s" % args.name)
+        print("SystemD Service: %s" % service)
+        print("SystemD Service state: %s" % service_state)
+        print("SystemD Service mode: %s" % service_enabled)
+        print("Docker container: %s" % config['container'])
+        print("Port forwarding: %s" % config['ports'])
+        print("Volumes: %s" % config['volumes'])
+        print("Commands: %s" % config['command'])
+
+#
+# Check if SystemD service is running
+#
+def is_service_active(service):
+    cmd = '/bin/systemctl status %s' % service
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    stdout = proc.communicate()[0].decode("utf-8")
+    stdout_list = stdout.split('\n')
+    for line in stdout_list:
+        if 'Active:' in line:
+            if '(running)' in line:
+                return True
+    return False
+
+#
+# Check if SystemD service is enabled
+#
+def is_service_enabled(service):
+    cmd = '/bin/systemctl status %s' % service
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    stdout = proc.communicate()[0].decode("utf-8")
+    stdout_list = stdout.split('\n')
+    for line in stdout_list:
+        if 'Loaded:' in line:
+            if '.service; enabled;' in line:
+                return True
+    return False
+
 # Gather our code in a main() function
 def main(args, loglevel):
   logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
@@ -263,6 +401,8 @@ def main(args, loglevel):
       start_service(args, cfg)
   elif args.action == 'stop':
       stop_service(args, cfg)
+  elif args.action == 'list':
+      list_service(args, cfg)
  
 
  
@@ -277,7 +417,7 @@ if __name__ == '__main__':
                       "-a",
                       "--action",
                       help = "Action the script has to perform",
-                      choices=['add', 'remove', 'start', 'stop'],
+                      choices=['add', 'remove', 'start', 'stop', 'list'],
                       required=True)
   parser.add_argument(
                       "-v",
@@ -299,7 +439,7 @@ if __name__ == '__main__':
                       "-n",
                       "--name",
                       help = "Name of the service",
-                      required=True)
+                      required=False)
   parser.add_argument(
                       "-d",
                       "--docker",
