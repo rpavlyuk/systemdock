@@ -11,6 +11,7 @@ import os, shutil, errno, yaml
 import fileinput
 import datetime
 import subprocess
+import random
 
 from argparse import ArgumentError
 
@@ -39,7 +40,9 @@ def make_profile_config(args):
            )
            ),
        network_mode = 'bridge',
-       environment = dict()
+       environment = dict(),
+       devices = list(),
+       mac_address = None
     )
 
     return config
@@ -190,6 +193,17 @@ def start_service(args, cfg):
     with open(config_file, 'r') as ymlfile:
         config = yaml.load(ymlfile)
 
+    # Correct defaults
+    if not 'mac_address' in config:
+        config['mac_address'] = "02:42:%02x:%02x:%02x:%02x" % (
+          random.randint(0, 255),
+          random.randint(0, 255),
+          random.randint(0, 255),
+          random.randint(0, 255)
+        )
+    if not 'devices' in config:
+        config['devices'] = list()
+
     ### Now, let's try to start it
     client = docker.from_env()
 
@@ -222,7 +236,9 @@ def start_service(args, cfg):
                 tty=config['tty'],
                 working_dir=config['working_dir'],
                 environment=config['environment'],
-                network_mode=config['network_mode']
+                network_mode=config['network_mode'],
+		devices=config['devices'],
+		mac_address=config['mac_address']
            )
         logging.info("Container " + args.name + " started!")
 
