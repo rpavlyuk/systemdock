@@ -5,9 +5,10 @@
 # COMPATIBILITY FIX: Jenkins job name is neccessary to make build root unique (for CentOS5 and earlier)
 %{!?JOB_NAME:%define JOB_NAME standalone}
 
+%{?python_enable_dependency_generator}
 
 Name:		systemdock
-Version:	0.2
+Version:	0.2.1
 Release:	%{svn_revision}%{?dist}
 Summary:	Toolset to run Docker containers as systemd service
 
@@ -21,8 +22,8 @@ BuildArch:      noarch
 
 Requires:	python3
 Requires:	docker	
-Requires:	python3-docker-py
-Requires:	python3-PyYAML
+Requires:	python3dist(docker)
+Requires:	python3dist(pyyaml)
 
 %description
 Toolset to run Docker containers as systemd service on RedHat and other Linux systems
