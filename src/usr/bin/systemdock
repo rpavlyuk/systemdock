@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2"
+_VERSION="0.2.1"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -35,14 +35,15 @@ def make_profile_config(args):
                post = ""
            ),
            container = dict(
-               pre = "",
                post = ""
            )
            ),
        network_mode = 'bridge',
        environment = dict(),
        devices = list(),
-       mac_address = None
+       mac_address = None,
+       restart_policy = dict(),
+       remove = False
     )
 
     return config
@@ -201,8 +202,18 @@ def start_service(args, cfg):
           random.randint(0, 255),
           random.randint(0, 255)
         )
+    # check if devices are provided in the config
     if not 'devices' in config:
         config['devices'] = list()
+
+    # the same for restart_policy -- check if there's restart policy provided
+    if not 'restart_policy' in config:
+        config['restart_policy'] = dict()
+
+    # check if 'restart' option is in the config
+    if not 'remove' in config:
+        config['remove'] = False
+
 
     ### Now, let's try to start it
     client = docker.from_env()
@@ -224,6 +235,19 @@ def start_service(args, cfg):
 
     # IF action is 'start' than the new container will be started. If not -- we have a perfect STOP action.
     if args.action == 'start':
+
+        # Process pre-start command on host os
+        if 'command' in config:
+            logging.debug("Found command block in container configuration")
+            if 'host' in config['command']:
+                logging.debug("Found host commands block in container configuration")
+                if 'pre' in config['command']['host']:
+                    logging.info("Executing pre-start command on host OS: " + config['command']['host']['pre'])
+                    os.system(config['command']['host']['pre'])
+            else:
+                logging.debug("Host commands not found in container configuration")
+
+        # Fire it off!
         logging.info("Starting container " + args.name + "...")
         if config['network_mode'] == 'host':
             container = client.containers.run(
@@ -238,7 +262,9 @@ def start_service(args, cfg):
                     working_dir=config['working_dir'],
                     environment=config['environment'],
                     network_mode=config['network_mode'],
-	  	    devices=config['devices']
+	  	    devices=config['devices'],
+                    restart_policy = config['restart_policy'],
+                    remove = config['remove']
                 )
         else:
                     container = client.containers.run(
@@ -254,10 +280,13 @@ def start_service(args, cfg):
                     environment=config['environment'],
                     network_mode=config['network_mode'],
                     devices=config['devices'],
-                    mac_address=config['mac_address']
+                    mac_address=config['mac_address'],
+                    restart_policy = config['restart_policy'],
+                    remove = config['remove']
                 )
         logging.info("Container " + args.name + " started!")
 
+        # Process commands section (post-start commands in container config)
         if 'command' in config:
             logging.debug("Found command block in container configuration")
             if 'host' in config['command']:
@@ -267,6 +296,16 @@ def start_service(args, cfg):
                     os.system(config['command']['host']['post'])
             else:
                 logging.debug("Host commands not found in container configuration")
+
+            if 'container' in config['command']:
+                logging.debug("Found container commands block in container configuration")
+                if 'post' in config['command']['container']:
+                    logging.debug("Found container post-start command in the configuration")
+                    logging.info("Executing post-start command on container: " + config['command']['container']['post'])
+                    exit_code, output = container.exec_run(config['command']['container']['post'], tty=config['tty'], privileged=config['privileged'], environment=config['environment'])
+                    logging.info("Command returned code {} with output {}".format(exit_code, output))
+
+                
         else:
             logging.debug("Command block not found in container configuration")
 
@@ -285,6 +324,8 @@ def start_service(args, cfg):
 #
 def stop_service(args, cfg):
 
+    # the idea is the following: since we kills the container before starting it (the logic is already in 'start_service' function,
+    # so then we can start go up killing the container and not to proceed with 'start' action furhter
     return start_service(args, cfg)
 
 #
