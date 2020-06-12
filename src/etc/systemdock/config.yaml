@@ -5,3 +5,5 @@ path:
         services: /etc/systemdock/containers.d
         template: /usr/share/systemdock/templates/systemdock-container.service.template
         systemd: /usr/lib/systemd/system
+container:
+        start_timeout:  120

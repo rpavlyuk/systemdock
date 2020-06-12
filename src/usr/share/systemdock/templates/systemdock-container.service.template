@@ -9,8 +9,8 @@ Restart=no
 RestartSec=60s
 Type=simple
 NotifyAccess=all
-ExecStart=-/usr/bin/systemdock -v -a start -n __NAME__
-ExecStop=/usr/bin/systemdock -v -a stop -n __NAME__
+ExecStart=-/usr/bin/systemdock -a start -n __NAME__
+ExecStop=/usr/bin/systemdock -a stop -n __NAME__
 
 [Install]
 WantedBy=multi-user.target

@@ -3,13 +3,14 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.1"
+_VERSION="0.2.2"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
 import os, shutil, errno, yaml
 import fileinput
 import datetime
+from time import sleep
 import subprocess
 import random
 
@@ -18,18 +19,19 @@ from argparse import ArgumentError
 import docker
 
 # Create empty configuration
+# See also https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run for more details on the settings
 def make_profile_config(args):
     # Create new config
     config = dict(
-       container = args.docker,
-       name = args.name,
-       created = datetime.datetime.now(),
-       ports = dict(),
-       volumes = dict(),
-       privileged = False,
-       tty = False,
-       working_dir = "/root",
-       command = dict(
+       container = args.docker,             # Container image to use
+       name = args.name,                    # Container name
+       created = datetime.datetime.now(),   # Timestamp when the configuration is created
+       ports = dict(),                      # TCP/UDP port mapping
+       volumes = dict(),                    # Docker volumes
+       privileged = False,                  # Running container in privileged mode
+       tty = False,                         # Enable TTY
+       working_dir = "/root",               # Working directory
+       command = dict(                      # Commands to be executed before and after launching the container
            host = dict(
                pre = "",
                post = ""
@@ -38,12 +40,13 @@ def make_profile_config(args):
                post = ""
            )
            ),
-       network_mode = 'bridge',
-       environment = dict(),
-       devices = list(),
-       mac_address = None,
-       restart_policy = dict(),
-       remove = False
+       network_mode = 'bridge',             # Networking mode
+       environment = dict(),                # Environment variables
+       devices = list(),                    # Device mapping
+       mac_address = None,                  # Mac Address
+       restart_policy = dict(),             # Restart policy
+       remove = False,                      # Remove container after shutting down
+       keep_alive = False                   # Restart container if it has gone unexpectedly
     )
 
     return config
@@ -77,7 +80,7 @@ def add_service(args, cfg):
         raise ArgumentError(args.docker, "Missing profile name")
 
     # Say hello
-    logging.debug("Adding new service: " + args.name)
+    logging.info("Adding new service: " + args.name)
 
     # Check if .d directory exists and we can write into it
     if not os.path.isdir(cfg['path']['services']):
@@ -123,14 +126,14 @@ def add_service(args, cfg):
         else:
             raise RuntimeError("Symlink to service file '" + systemd_file + "' exists. Enable force mode (-f) or remove the service first.")
     # Now, let's create it
-    logging.debug("Creating symlink: [" + service_file + "] to [" + systemd_file + "]")
+    logging.info("Creating symlink: [" + service_file + "] to [" + systemd_file + "]")
     os.symlink(src=service_file, dst=systemd_file)
 
     # Create configuration file
     config = make_profile_config(args)
     with open(cfg['path']['services'] + "/" + args.name + "/config.yml", 'w') as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
-        logging.debug("Wrote config " + cfg['path']['services'] + "/" + args.name + "/config.yml")
+        logging.info("Wrote config " + cfg['path']['services'] + "/" + args.name + "/config.yml")
 
 
 #
@@ -144,7 +147,7 @@ def remove_service(args, cfg):
         raise ArgumentError(args.docker, "Missing profile name")
 
     # Say hello
-    logging.debug("Removing service: " + args.name)
+    logging.info("Removing service: " + args.name)
 
     # Check if directory exists
     if not os.path.isdir(cfg['path']['services'] + "/" + args.name):
@@ -190,7 +193,7 @@ def start_service(args, cfg):
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
 
     # Read the configuration
-    logging.debug("Loading profile configuration from " + config_file)
+    logging.info("Loading profile configuration from " + config_file)
     with open(config_file, 'r') as ymlfile:
         config = yaml.load(ymlfile)
 
@@ -213,6 +216,10 @@ def start_service(args, cfg):
     # check if 'restart' option is in the config
     if not 'remove' in config:
         config['remove'] = False
+
+    # check if 'keep_alive' option is in the config
+    if not 'keep_alive' in config:
+        config['keep_alive'] = False
 
 
     ### Now, let's try to start it
@@ -245,7 +252,7 @@ def start_service(args, cfg):
                     logging.info("Executing pre-start command on host OS: " + config['command']['host']['pre'])
                     os.system(config['command']['host']['pre'])
             else:
-                logging.debug("Host commands not found in container configuration")
+                logging.info("Host commands not found in container configuration")
 
         # Fire it off!
         logging.info("Starting container " + args.name + "...")
@@ -295,7 +302,7 @@ def start_service(args, cfg):
                     logging.info("Executing post-start command on host OS: " + config['command']['host']['post'])
                     os.system(config['command']['host']['post'])
             else:
-                logging.debug("Host commands not found in container configuration")
+                logging.info("Host commands not found in container configuration")
 
             if 'container' in config['command']:
                 logging.debug("Found container commands block in container configuration")
@@ -307,16 +314,65 @@ def start_service(args, cfg):
 
                 
         else:
-            logging.debug("Command block not found in container configuration")
+            logging.info("Command block not found in container configuration")
+
+        # Wait for container to start
+        logging.info("Waiting for container to start ...")
+        # check if 'start_timeout' option is in the config
+        if not 'container' in cfg or not 'start_timeout' in cfg['container']:
+            cfg['container']['start_timeout'] = 120
+        check_count = 0
+        while True:
+            # get latest attributes from Docker
+            container.reload()
+            # check status
+            c_status = container.status
+            check_count+=1
+            logging.debug("Container status: {}".format(c_status))
+
+            if container.status == 'running':
+                logging.info("Container is now running!")
+                break
+
+            if check_count > cfg['container']['start_timeout']:
+                logging.error("Unable to get container running within {} seconds".format(cfg['container']['start_timeout']))
+                return
+            # wait for a moment
+            sleep(1)
+
 
         # Hold the control process open
         # So, we will read the logs over and over
         while True:
             try:
-                print(container.logs(follow=True, stdout=True, stderr=True))
-            except:
+                # check status
+                container.reload()
+                c_status = container.status
+                logging.debug("Container status: {}".format(c_status))
+
+                # print logs
+                for line in container.logs(follow=True, stdout=True, stderr=True, stream=True):
+                    
+                    # some cleanup
+                    line_str = str(line, encoding = 'utf-8')
+                    line_str.strip()
+                    line_str.replace("b'", "")
+                    line_str.replace("\n'", "")
+
+                    # print line
+                    logging.info(line_str)
+
+                    # If container has found gone and keep_alive is enabled then we will try to recover it
+                    container.reload()
+                    if container.status != 'running' and  config['keep_alive']:
+                        logging.warning("Container is not running and keep_alive is enabled. Will try to recover it!")
+                        start_service(args, cfg)
+
+            except Exception as err:
+
                 # No one cares
-                logging.debug("FIXME: Log read timeout")
+                logging.error("Got error when running the container: {}".format(str(err)))
+                logging.exception("Unexpected exception")
 
 
 #
@@ -463,7 +519,7 @@ def main(args, loglevel):
   cfg = parse_config(args, loglevel, args.config)
 
   # Main program code
-  logging.debug("Action: %s" % args.action)
+  logging.info("SYSTEMDock Action: %s" % args.action)
 
   # Proceed with the action
   if args.action == 'add':
@@ -495,12 +551,13 @@ if __name__ == '__main__':
   parser.add_argument(
                       "-v",
                       "--verbose",
-                      help="increase output verbosity",
-                      action="store_true")
+                      help="Increase output verbosity. NOTE: This option produces lots of information like API calls so beware when using it.",
+                      action="store_true",
+                      default=False)
   parser.add_argument(
                       "-f",
                       "--force",
-                      help="Ignore minor errors, assume 'yes' when deleting and override in case of existing",
+                      help="Ignore minor errors, assume 'yes' when deleting and override in case of existing entities",
                       action="store_true")
   parser.add_argument(
                       "-c",
