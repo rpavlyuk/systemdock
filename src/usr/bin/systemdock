@@ -8,6 +8,12 @@ _VERSION="0.2.2"
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
 import os, shutil, errno, yaml
+
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
+
 import fileinput
 import datetime
 from time import sleep
@@ -62,7 +68,7 @@ def parse_config(args, loglevel, config_file='/etc/systemdock/config.yaml'):
     # Read the configuration
     logging.debug("Loading basic configuration from " + config_file)
     with open(config_file, 'r') as ymlfile:
-        cfg = yaml.load(ymlfile)
+        cfg = yaml.load(ymlfile, Loader=Loader)
 
     return cfg
 
@@ -195,7 +201,7 @@ def start_service(args, cfg):
     # Read the configuration
     logging.info("Loading profile configuration from " + config_file)
     with open(config_file, 'r') as ymlfile:
-        config = yaml.load(ymlfile)
+        config = yaml.load(ymlfile, Loader=Loader)
 
     # Correct defaults
     if not 'mac_address' in config:
@@ -225,23 +231,23 @@ def start_service(args, cfg):
     ### Now, let's try to start it
     client = docker.from_env()
 
-    # Pull the image
-    if args.action == 'start':
-        logging.info("Pulling container " + config['container'] + " ...")
-        image = client.images.pull(config['container'])
-        logging.info("Pulling complete!")
-
-    # Run!
+    # Let's try to stop / kill & remove the previous container first
     try:
         logging.info("Check for running instance of " + config['container'])
         container = client.containers.get(args.name)
         container.remove(force=True, v=True)
         logging.info("Container " + args.name + " was found running and is now stopped")
     except docker.errors.NotFound:
-        logging.warn("Container " + args.name + " wasn't found")
+        logging.warning("Container " + args.name + " wasn't found")
 
-    # IF action is 'start' than the new container will be started. If not -- we have a perfect STOP action.
+
+    # IF action is 'start' than the new container will be started. If not -- the block below will be skipped and we are left with killed/stopped and remmoved container which is a perfect STOP action.
     if args.action == 'start':
+
+        # Pull the new image
+        logging.info("Pulling container " + config['container'] + " ...")
+        image = client.images.pull(config['container'])
+        logging.info("Pulling complete!")
 
         # Process pre-start command on host os
         if 'command' in config:
