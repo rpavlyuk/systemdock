@@ -46,7 +46,7 @@ install-rpm: rpm
 uninstall-rpm:
 	$(PKG_MGR) remove -y systemdock || :
 
-reinstall-rpm: uninstall-rpm install-rpm 
+reinstall-rpm: clean uninstall-rpm install-rpm 
 
 clean:
 	$(RM) .rpmbuild
