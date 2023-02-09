@@ -8,7 +8,7 @@
 %{?python_enable_dependency_generator}
 
 Name:		systemdock
-Version:	0.2.3
+Version:	0.2.4
 Release:	%{svn_revision}%{?dist}
 Summary:	Toolset to run Docker containers as systemd service
 

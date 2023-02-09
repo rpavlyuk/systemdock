@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.3"
+_VERSION="0.2.4"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -52,7 +52,8 @@ def make_profile_config(args):
        mac_address = None,                  # Mac Address
        restart_policy = dict(),             # Restart policy
        remove = False,                      # Remove container after shutting down
-       keep_alive = False                   # Restart container if it has gone unexpectedly
+       keep_alive = False,                  # Restart container if it has gone unexpectedly
+       tmpfs = dict()                       # Temporary filesystems to mount
     )
 
     return config
@@ -210,6 +211,8 @@ def start_service(args, cfg):
     with open(config_file, 'r') as ymlfile:
         config = yaml.load(ymlfile, Loader=Loader)
 
+    ### Process optional settings and assign/correct default values
+
     # Correct defaults
     if not 'mac_address' in config:
         config['mac_address'] = "02:42:%02x:%02x:%02x:%02x" % (
@@ -234,6 +237,9 @@ def start_service(args, cfg):
     if not 'keep_alive' in config:
         config['keep_alive'] = False
 
+    # check if tmpfs mounts were specified
+    if not 'tmpfs' in config:
+        config['tmpfs'] = dict()
 
     ### Now, let's try to start it
     client = docker.from_env()
@@ -284,7 +290,8 @@ def start_service(args, cfg):
                     network_mode=config['network_mode'],
 	  	    devices=config['devices'],
                     restart_policy = config['restart_policy'],
-                    remove = config['remove']
+                    remove = config['remove'],
+                    tmpfs = config['tmpfs']
                 )
         else:
                     container = client.containers.run(
@@ -302,7 +309,8 @@ def start_service(args, cfg):
                     devices=config['devices'],
                     mac_address=config['mac_address'],
                     restart_policy = config['restart_policy'],
-                    remove = config['remove']
+                    remove = config['remove'],
+                    tmpfs = config['tmpfs']
                 )
         logging.info("Container " + args.name + " started!")
 
