@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.4"
+_VERSION="0.2.5"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -149,6 +149,8 @@ def add_service(args, cfg):
         yaml.dump(config, outfile, default_flow_style=False)
         logging.info("Wrote config " + cfg['path']['services'] + "/" + args.name + "/config.yml")
 
+    # return True is nothing happens
+    return True
 
 #
 # Remove the service
@@ -166,7 +168,7 @@ def remove_service(args, cfg):
     # Check if directory exists
     if not os.path.isdir(cfg['path']['services'] + "/" + args.name):
         logging.error("Service [" + args.name + "] doesn't exists: profile directory missing")
-        return
+        return False
 
     # remove the symlink
     systemd_file = cfg['path']['systemd'] + "/systemdock-" + args.name + ".service"
@@ -176,6 +178,9 @@ def remove_service(args, cfg):
     shutil.rmtree(cfg['path']['services'] + "/" + args.name)
 
     logging.info("Removed service " + args.name)
+
+    # if nothing happens -- return True
+    return True
 
 
 #
@@ -251,7 +256,7 @@ def start_service(args, cfg):
         container.remove(force=True, v=True)
         logging.info("Container " + args.name + " was found running and is now stopped")
     except docker.errors.NotFound:
-        logging.warning("Container " + args.name + " wasn't found")
+        logging.warning("Container " + args.name + " wasn't found running")
 
 
     # IF action is 'start' than the new container will be started. If not -- the block below will be skipped and we are left with killed/stopped and remmoved container which is a perfect STOP action.
@@ -357,19 +362,26 @@ def start_service(args, cfg):
 
             if check_count > cfg['container']['start_timeout']:
                 logging.error("Unable to get container running within {} seconds".format(cfg['container']['start_timeout']))
-                return
+                return False
             # wait for a moment
             sleep(1)
 
 
         # Hold the control process open
         # So, we will read the logs over and over
+        # Also, let's start counting the times when cycle was run into exception.
+        # This is to prevent the program into running in endless failure cycle. If certain threshold is passed -- the container is set for a restart. 
+        exc_count = 0
         while True:
             try:
                 # check status
                 container.reload()
                 c_status = container.status
                 logging.debug("Container status: {}".format(c_status))
+
+                # Reset the exception counter: if made it to the log output -- we assume that container is stable
+                exc_count = 0
+                logging.debug("Resetting exception counter. Last value: {}".format(exc_count))
 
                 # print logs
                 for line in container.logs(follow=True, stdout=True, stderr=True, stream=True):
@@ -390,11 +402,22 @@ def start_service(args, cfg):
                         start_service(args, cfg)
 
             except Exception as err:
-
+                # increase exception counter
+                exc_count = exc_count + 1
                 # No one cares
                 logging.error("Got error when running the container: {}".format(str(err)))
                 logging.exception("Unexpected exception")
+                # check if there were too many exceptions
+                if not 'runtime_exception_limit' in cfg['container']:
+                    runtime_exception_limit = 32
+                else:
+                    runtime_exception_limit = cfg['container']['runtime_exception_limit']
+                if exc_count > runtime_exception_limit:
+                    # End container management process with negative result and let systemd do the fault-tolerance action(s)
+                    return False
 
+    # if nothing happened -- return TRUE
+    return True
 
 #
 # Stop the service
@@ -403,7 +426,9 @@ def stop_service(args, cfg):
 
     # the idea is the following: since we kills the container before starting it (the logic is already in 'start_service' function,
     # so then we can start go up killing the container and not to proceed with 'start' action furhter
+    args.action = "stop"
     return start_service(args, cfg)
+
 
 #
 # List services managed by systemdock
@@ -460,7 +485,7 @@ def list_service(args, cfg):
 
         if not os.path.exists(p_dir):
             logging.error("Profile not found: %s" % args.name)
-            return
+            return False
 
         # Read container configuration
         config_file = os.path.join(cfg['path']['services'], args.name, "config.yml")
@@ -497,6 +522,9 @@ def list_service(args, cfg):
         print("Port forwarding: %s" % config['ports'])
         print("Volumes: %s" % config['volumes'])
         print("Commands: %s" % config['command'])
+
+    # return True if nothing happens
+    return True
 
 #
 # Check if SystemD service is running
@@ -542,17 +570,24 @@ def main(args, loglevel):
   # Main program code
   logging.info("SYSTEMDock Action: %s" % args.action)
 
+  # Result
+  res_status = True
+
   # Proceed with the action
   if args.action == 'add':
-      add_service(args, cfg)
+      res_status = add_service(args, cfg)
   elif args.action == 'remove':
-      remove_service(args, cfg)
+      res_status = remove_service(args, cfg)
   elif args.action == 'start':
-      start_service(args, cfg)
+      res_status = start_service(args, cfg)
   elif args.action == 'stop':
-      stop_service(args, cfg)
+      res_status = stop_service(args, cfg)
   elif args.action == 'list':
-      list_service(args, cfg)
+      res_status = list_service(args, cfg)
+
+  if not res_status:
+      logging.error("Exiting with code 1")
+      exit(1)
  
 
  
