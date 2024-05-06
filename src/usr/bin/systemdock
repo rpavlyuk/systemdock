@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.5"
+_VERSION="0.2.6"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -49,6 +49,7 @@ def make_profile_config(args):
        network_mode = 'bridge',             # Networking mode
        environment = dict(),                # Environment variables
        devices = list(),                    # Device mapping
+       device_requests = list(),            # Expose host resources such as GPUs to the container, as a list
        mac_address = None,                  # Mac Address
        restart_policy = dict(),             # Restart policy
        remove = False,                      # Remove container after shutting down
@@ -230,6 +231,29 @@ def start_service(args, cfg):
     if not 'devices' in config:
         config['devices'] = list()
 
+    # adjust device requests (config['device_requests']) to default value if not in the config
+    if not 'device_requests' in config:
+        config['device_requests'] = list()
+    else:
+        logging.info("Found device_requests:\n" + str(config['device_requests']))
+        dr_list = list()
+        for dr_item in config['device_requests']:
+            dr_object = docker.types.DeviceRequest()
+            if 'Driver' in dr_item:
+                dr_object['Driver'] = dr_item['Driver']
+            if 'Count' in dr_item:
+                dr_object['Count'] = dr_item['Count']
+            if 'DeviceIDs' in dr_item:
+                dr_object['DeviceIDs'] = dr_item['DeviceIDs']
+            if 'Capabilities' in dr_item:
+                dr_object['Capabilities'] = dr_item['Capabilities']
+            if 'Options' in dr_item:
+                dr_object['Options'] = dr_item['Options']
+            dr_list.append(dr_object)
+        # assign re-built device requests list to the config
+        config['device_requests'] = dr_list
+        logging.info("Re-built device_requests list:\n" + str(config['device_requests']))
+
     # the same for restart_policy -- check if there's restart policy provided
     if not 'restart_policy' in config:
         config['restart_policy'] = dict()
@@ -293,7 +317,8 @@ def start_service(args, cfg):
                     working_dir=config['working_dir'],
                     environment=config['environment'],
                     network_mode=config['network_mode'],
-	  	    devices=config['devices'],
+        	  	    devices=config['devices'],
+                    device_requests=config['device_requests'],
                     restart_policy = config['restart_policy'],
                     remove = config['remove'],
                     tmpfs = config['tmpfs']
@@ -312,6 +337,7 @@ def start_service(args, cfg):
                     environment=config['environment'],
                     network_mode=config['network_mode'],
                     devices=config['devices'],
+                    device_requests=config['device_requests'],
                     mac_address=config['mac_address'],
                     restart_policy = config['restart_policy'],
                     remove = config['remove'],
