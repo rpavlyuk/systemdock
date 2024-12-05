@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.7"
+_VERSION="0.2.8"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -195,7 +195,12 @@ def start_service(args, cfg):
     if args.name is None:
         logging.error("Missing command-line argument: -n/--name")
         raise ArgumentError(args.docker, "Missing profile name")
-    
+
+    # Dynamically update logging format with the container name
+    container_name = args.name
+    for handler in logging.root.handlers:
+        handler.setFormatter(logging.Formatter(f"[{container_name}] %(levelname)s: %(message)s"))
+
     # Say hello
     if args.action == 'start':
         logging.info("Starting service " + args.name)
