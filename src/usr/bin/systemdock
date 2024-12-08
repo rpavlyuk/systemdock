@@ -56,7 +56,9 @@ def make_profile_config(args):
        keep_alive = False,                  # Restart container if it has gone unexpectedly
        tmpfs = dict(),                      # Temporary filesystems to mount
        security_opt = list(),               # Custom labels for MLS systems, such as SELinux
-       cgroupns = "private"                 # Override the default cgroup namespace mode for the container.
+       cgroupns = "private",                # Override the default cgroup namespace mode for the container.
+       cap_add = list(),                    # Add kernel capabilities. For example, ["SYS_ADMIN", "MKNOD"]
+       cap_drop = list()                    # Drop kernel capabilities.
     )
 
     return config
@@ -285,6 +287,14 @@ def start_service(args, cfg):
     if not 'cgroupns' in config:
         config['cgroupns'] = "private"
 
+    # check for cap_add
+    if not 'cap_add' in config:
+        config['cap_add'] = list()
+
+    # check for cap_drop
+    if not 'cap_drop' in config:
+        config['cap_drop'] = list()
+
     ### Now, let's try to start it
     client = docker.from_env()
 
@@ -338,7 +348,9 @@ def start_service(args, cfg):
                     remove = config['remove'],
                     tmpfs = config['tmpfs'],
                     security_opt = config['security_opt'],
-                    cgroupns = config['cgroupns']
+                    cgroupns = config['cgroupns'],
+                    cap_add = config['cap_add'],
+                    cap_drop = config['cap_drop']
                 )
         else:
                     container = client.containers.run(
@@ -360,7 +372,9 @@ def start_service(args, cfg):
                     remove = config['remove'],
                     tmpfs = config['tmpfs'],
                     security_opt = config['security_opt'],
-                    cgroupns = config['cgroupns']
+                    cgroupns = config['cgroupns'],
+                    cap_add = config['cap_add'],
+                    cap_drop = config['cap_drop']                    
                 )
         logging.info("Container " + args.name + " started!")
 
