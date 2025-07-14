@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.8"
+_VERSION="0.2.9"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -60,7 +60,12 @@ def make_profile_config(args):
        cap_add = list(),                    # Add kernel capabilities. For example, ["SYS_ADMIN", "MKNOD"]
        cap_drop = list(),                   # Drop kernel capabilities.
        group_add = list(),                  # List of additional group names and/or IDs
-       links = dict()                       # Mapping of links using the {'container': 'alias'} format.
+       links = dict(),                      # Mapping of links using the {'container': 'alias'} format.
+       user = "root",                       # Username or UID to run commands as inside the container.
+       publish_all_ports = False,           # Publish all ports to the host.
+       mounts = list(),                     # Specification for mounts to be added to the container.
+       init = False,                        # Run an init inside the container that forwards signals and reaps processes
+       healthcheck = dict()                 # Specify a test to perform to check that the container is healthy.
     )
 
     return config
@@ -265,6 +270,9 @@ def start_service(args, cfg):
         config['device_requests'] = dr_list
         logging.info("Re-built device_requests list:\n" + str(config['device_requests']))
 
+    # Let's define out optional/additional parameters dictionary which we will pass to run function
+    config_params = dict()
+
     # the same for restart_policy -- check if there's restart policy provided
     if not 'restart_policy' in config:
         config['restart_policy'] = dict()
@@ -304,6 +312,28 @@ def start_service(args, cfg):
     # check for links
     if not 'links' in config:
         config['links'] = dict()
+
+    # check for user
+    if 'user' in config:
+        config_params['user'] = config['user']
+
+    # check for publish_all_ports
+    if 'publish_all_ports' in config:
+        config_params['publish_all_ports'] = config['publish_all_ports']
+
+    # check for mounts
+    if 'mounts' in config:
+        config_params['mounts'] = config['mounts']
+
+    # check for init
+    if 'init' in config:
+        config_params['init'] = config['init']
+
+    # check for healthcheck
+    if 'healthcheck' in config:
+        config_params['healthcheck'] = config['healthcheck']
+
+
 
     ### Now, let's try to start it
     client = docker.from_env()
@@ -362,7 +392,8 @@ def start_service(args, cfg):
                     cap_add = config['cap_add'],
                     cap_drop = config['cap_drop'],
                     group_add = config['group_add'],
-                    links = config['links']
+                    links = config['links'],
+                    **config_params
                 )
         else:
                     container = client.containers.run(
@@ -388,7 +419,8 @@ def start_service(args, cfg):
                     cap_add = config['cap_add'],
                     cap_drop = config['cap_drop'],
                     group_add = config['group_add'],
-                    links = config['links']
+                    links = config['links'],
+                    **config_params
                 )
         logging.info("Container " + args.name + " started!")
 
