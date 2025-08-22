@@ -65,7 +65,8 @@ def make_profile_config(args):
        publish_all_ports = False,           # Publish all ports to the host.
        mounts = list(),                     # Specification for mounts to be added to the container.
        init = False,                        # Run an init inside the container that forwards signals and reaps processes
-       healthcheck = dict()                 # Specify a test to perform to check that the container is healthy.
+       healthcheck = dict(),                # Specify a test to perform to check that the container is healthy.
+       extra_hosts = dict()                 # Additional hostnames to resolve inside the container
     )
 
     return config
@@ -333,7 +334,9 @@ def start_service(args, cfg):
     if 'healthcheck' in config:
         config_params['healthcheck'] = config['healthcheck']
 
-
+    # check for extra_hosts
+    if 'extra_hosts' in config:
+        config_params['extra_hosts'] = config['extra_hosts']
 
     ### Now, let's try to start it
     client = docker.from_env()
