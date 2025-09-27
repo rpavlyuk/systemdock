@@ -3,7 +3,7 @@
 # SystemDock: tool to manage Docker containers as SystemD services
 # Author: Roman Pavlyuk <roman.pavlyuk@gmail.com>
 
-_VERSION="0.2.9"
+_VERSION="0.3"
 
 # import modules used here -- sys is a very standard one
 import sys, argparse, logging
@@ -21,29 +21,38 @@ import subprocess
 import random
 
 from argparse import ArgumentError
+from typing import Any, Dict, Tuple
+import copy
 
 import docker
+
+CONTAINER_CONFIG_EXTRA_KEYS = ("execute", "keep_alive", "container", "created")
 
 # Create empty configuration
 # See also https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run for more details on the settings
 def make_profile_config(args):
+    """
+    Create a new configuration dictionary with default values. The values will be later overwritten by the values from the configuration file,
+    and also they can be extended by the user by providing additional parameters in the configuration file, according to the Docker SDK for Python API.
+    See https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run for more details on the settings.
+    """
     # Create new config
     config = dict(
-       container = args.docker,             # Container image to use
+       container = args.docker,             # Container image to use (SystemDock specific parameter)
        name = args.name,                    # Container name
-       created = datetime.datetime.now(),   # Timestamp when the configuration is created
+       created = datetime.datetime.now(),   # Timestamp when the configuration is created (SystemDock specific parameter)
        ports = dict(),                      # TCP/UDP port mapping
        volumes = dict(),                    # Docker volumes
        privileged = False,                  # Running container in privileged mode
        tty = False,                         # Enable TTY
        working_dir = "/root",               # Working directory
-       command = dict(                      # Commands to be executed before and after launching the container
+       execute = dict(                      # Commands to be executed before and after launching the container  (SystemDock specific parameter)
            host = dict(
-               pre = "",
-               post = ""
+               pre = "",                    # Command to be executed on the host OS before starting the container
+               post = ""                    # Command to be executed on the host OS after starting the container
            ),
            container = dict(
-               post = ""
+               post = ""                    # Command to be executed inside the container after starting it
            )
            ),
        network_mode = 'bridge',             # Networking mode
@@ -53,7 +62,7 @@ def make_profile_config(args):
        mac_address = None,                  # Mac Address
        restart_policy = dict(),             # Restart policy
        remove = False,                      # Remove container after shutting down
-       keep_alive = False,                  # Restart container if it has gone unexpectedly
+       keep_alive = False,                  # Restart container if it has gone unexpectedly (SystemDock specific parameter)
        tmpfs = dict(),                      # Temporary filesystems to mount
        security_opt = list(),               # Custom labels for MLS systems, such as SELinux
        cgroupns = "private",                # Override the default cgroup namespace mode for the container.
@@ -66,7 +75,8 @@ def make_profile_config(args):
        mounts = list(),                     # Specification for mounts to be added to the container.
        init = False,                        # Run an init inside the container that forwards signals and reaps processes
        healthcheck = dict(),                # Specify a test to perform to check that the container is healthy.
-       extra_hosts = dict()                 # Additional hostnames to resolve inside the container
+       extra_hosts = dict(),                # Additional hostnames to resolve inside the container
+       command = None                       # The command to run in the container.
     )
 
     return config
@@ -92,6 +102,60 @@ def parse_config(args, loglevel, config_file='/etc/systemdock/config.yaml'):
         logging.info("Configuration from file " + config_file + " loaded successfully. Method #2.")
 
     return cfg
+
+def migrate_and_split_config(config_in: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Prepare the configuration and ensure backward compatibility with previous versions of SystemDock.
+    Returns (docker_config, extras).
+    - docker_config: only Docker SDK-compatible args
+    - extras: SystemDock-only fields: {'execute': {...}, 'keep_alive': ...}
+    Backward-compat:
+      * If `command` is a dict with legacy structure {host:{pre,post}, container:{post}},
+        migrate to extras['execute'] and remove 'command' from docker_config.
+      * If `command` is str or list, keep it as-is (Docker-native).
+      * If both new `execute` and legacy dict `command` exist, prefer `execute` and warn.
+    """
+    logging.debug("Migrating and splitting config.")
+    cfg = copy.deepcopy(config_in)
+    extras: Dict[str, Any] = {}
+
+    # 1) Handle legacy `command` that was actually the `execute` structure
+    if "command" in cfg and isinstance(cfg["command"], dict):
+        legacy = cfg["command"]
+        looks_legacy = ("host" in legacy) or ("container" in legacy)
+        if looks_legacy:
+            if "execute" in cfg and isinstance(cfg["execute"], dict):
+                logging.warning("Both 'execute' and legacy 'command' (dict) found; using 'execute' and ignoring legacy.")
+            else:
+                # migrate legacy -> extras['execute']
+                extras["execute"] = {
+                    "host": {
+                        "pre":  (legacy.get("host", {}) or {}).get("pre", ""),
+                        "post": (legacy.get("host", {}) or {}).get("post", ""),
+                    },
+                    "container": {
+                        "post": (legacy.get("container", {}) or {}).get("post", ""),
+                    },
+                }
+                logging.info("Migrated legacy 'command' (dict) to extras['execute'].")
+            # remove legacy dict so Docker doesn't choke on it
+            cfg.pop("command", None)
+
+    # 2) Extract explicit new `execute` and `keep_alive`
+    for key in CONTAINER_CONFIG_EXTRA_KEYS:
+        val = cfg.pop(key, None)
+        if val is not None:
+            # Do not overwrite execute if it was already set from legacy
+            if key == "execute" and "execute" in extras:
+                logging.debug("Ignoring duplicate 'execute' from cfg; legacy migration already set it.")
+            else:
+                logging.debug("Extracted new key '" + key + "' from cfg.")
+                extras[key] = val
+
+    # 3) `command` is left intact if it's str or list (native Docker)
+    # No further action needed.
+
+    return cfg, extras
 
 # Add new service
 def add_service(args, cfg):
@@ -201,6 +265,10 @@ def remove_service(args, cfg):
 #
 def start_service(args, cfg):
 
+    ##
+    # Initial checks
+    ##
+
     # Make sure that "name" is not missing
     if args.name is None:
         logging.error("Missing command-line argument: -n/--name")
@@ -222,6 +290,10 @@ def start_service(args, cfg):
         logging.error("Service [" + args.name + "] doesn't exists: profile directory missing")
         return False
 
+    ##
+    # Read and process configuration of the container
+    ##
+
     # Read container configuration
     config_file = os.path.join(cfg['path']['services'], args.name, "config.yml")
     # First, check if file exists
@@ -234,7 +306,9 @@ def start_service(args, cfg):
     with open(config_file, 'r') as ymlfile:
         config = yaml.load(ymlfile, Loader=Loader)
 
-    ### Process optional settings and assign/correct default values
+    ##
+    # Process container configuration settings and assign/correct default values
+    ##
 
     # Correct defaults
     if not 'mac_address' in config:
@@ -244,9 +318,6 @@ def start_service(args, cfg):
           random.randint(0, 255),
           random.randint(0, 255)
         )
-    # check if devices are provided in the config
-    if not 'devices' in config:
-        config['devices'] = list()
 
     # adjust device requests (config['device_requests']) to default value if not in the config
     if not 'device_requests' in config:
@@ -271,182 +342,110 @@ def start_service(args, cfg):
         config['device_requests'] = dr_list
         logging.info("Re-built device_requests list:\n" + str(config['device_requests']))
 
+    ##
+    # Prepare container configuration parameters for docker-py run() function
+    ##
+
     # Let's define out optional/additional parameters dictionary which we will pass to run function
     config_params = dict()
 
-    # the same for restart_policy -- check if there's restart policy provided
-    if not 'restart_policy' in config:
-        config['restart_policy'] = dict()
+    # Extract extra config keys that are not part of docker-py API
+    # This is to prevent passing unknown parameters to docker-py which will result in an error
+    config, config_extras = migrate_and_split_config(config)
 
-    # check if 'restart' option is in the config
-    if not 'remove' in config:
-        config['remove'] = False
+    # Build the configuration set for the container
+    # 1. Get the base configuration model
+    base_config = make_profile_config(args)
 
-    # check if 'keep_alive' option is in the config
-    if not 'keep_alive' in config:
-        config['keep_alive'] = False
+    # 2. Now, let's copy parameters from the loaded configuration to the target container configuration
+    for key in base_config:
+        if key in config:
+            config_params[key] = config[key]
 
-    # check if tmpfs mounts were specified
-    if not 'tmpfs' in config:
-        config['tmpfs'] = dict()
+    ##
+    # Now, let's try to starting the container
+    ##
 
-    # check if security options were provided
-    if not 'security_opt' in config:
-        config['security_opt'] = list()
-
-    # set default cgroupns
-    if not 'cgroupns' in config:
-        config['cgroupns'] = "private"
-
-    # check for cap_add
-    if not 'cap_add' in config:
-        config['cap_add'] = list()
-
-    # check for cap_drop
-    if not 'cap_drop' in config:
-        config['cap_drop'] = list()
-
-    # check for group_add
-    if not 'group_add' in config:
-        config['group_add'] = list()
-
-    # check for links
-    if not 'links' in config:
-        config['links'] = dict()
-
-    # check for user
-    if 'user' in config:
-        config_params['user'] = config['user']
-
-    # check for publish_all_ports
-    if 'publish_all_ports' in config:
-        config_params['publish_all_ports'] = config['publish_all_ports']
-
-    # check for mounts
-    if 'mounts' in config:
-        config_params['mounts'] = config['mounts']
-
-    # check for init
-    if 'init' in config:
-        config_params['init'] = config['init']
-
-    # check for healthcheck
-    if 'healthcheck' in config:
-        config_params['healthcheck'] = config['healthcheck']
-
-    # check for extra_hosts
-    if 'extra_hosts' in config:
-        config_params['extra_hosts'] = config['extra_hosts']
-
-    ### Now, let's try to start it
-    client = docker.from_env()
-
+    # Initialize Docker client
+    client = docker.DockerClient(base_url=cfg['docker']['base_url'], version=cfg['docker']['api_version'], timeout=cfg['docker']['timeout'])
+    docker_version_info = client.version()
+    logging.debug("Docker version info: " + str(docker_version_info))
+  
     # Let's try to stop / kill & remove the previous container first
     try:
-        logging.info("Check for running instance of " + config['container'])
-        container = client.containers.get(args.name)
+        logging.info("Check for running instance of \"" + config['name'] + "\" container ...")
+        container = client.containers.get(config['name'])
         container.remove(force=True, v=True)
-        logging.info("Container " + args.name + " was found running and is now stopped")
+        logging.info("Container " + config['name'] + " was found running and is now stopped")
     except docker.errors.NotFound:
-        logging.warning("Container " + args.name + " wasn't found running")
+        logging.warning("Container " + config['name'] + " wasn't found running")
 
 
-    # IF action is 'start' than the new container will be started. If not -- the block below will be skipped and we are left with killed/stopped and remmoved container which is a perfect STOP action.
+    # If action is 'start' than the new container will be started. If not -- the block below will be skipped and we are left with killed/stopped and remmoved container which is a perfect STOP action.
     if args.action == 'start':
 
         # Pull the new image
-        logging.info("Pulling container " + config['container'] + " ...")
-        image = client.images.pull(config['container'])
+        logging.info("Pulling container " + config_extras['container'] + " ...")
+        image = client.images.pull(config_extras['container'])
         logging.info("Pulling complete!")
 
         # Process pre-start command on host os
-        if 'command' in config:
+        if 'execute' in config_extras and config_extras['execute'] is not None:
             logging.debug("Found command block in container configuration")
-            if 'host' in config['command']:
+            if 'host' in config_extras['execute']:
                 logging.debug("Found host commands block in container configuration")
-                if 'pre' in config['command']['host']:
-                    logging.info("Executing pre-start command on host OS: " + config['command']['host']['pre'])
-                    os.system(config['command']['host']['pre'])
+                if 'pre' in config_extras['execute']['host']:
+                    logging.info("Executing pre-start command on host OS: " + config_extras['execute']['host']['pre'])
+                    os.system(config_extras['execute']['host']['pre'])
             else:
                 logging.info("Host commands not found in container configuration")
 
         # Fire it off!
         logging.info("Starting container " + args.name + "...")
-        if config['network_mode'] == 'host':
+        try:
             container = client.containers.run(
-                    config['container'],
-                    detach=True,
-                    name=args.name,
-                    hostname=args.name,
-                    ports=config['ports'],
-                    volumes=config['volumes'],
-                    privileged=config['privileged'],
-                    tty=config['tty'],
-                    working_dir=config['working_dir'],
-                    environment=config['environment'],
-                    network_mode=config['network_mode'],
-        	  	    devices=config['devices'],
-                    device_requests=config['device_requests'],
-                    restart_policy = config['restart_policy'],
-                    remove = config['remove'],
-                    tmpfs = config['tmpfs'],
-                    security_opt = config['security_opt'],
-                    cgroupns = config['cgroupns'],
-                    cap_add = config['cap_add'],
-                    cap_drop = config['cap_drop'],
-                    group_add = config['group_add'],
-                    links = config['links'],
-                    **config_params
+                        config_extras['container'],
+                        detach=True,
+                        hostname=args.name,
+                        **config_params
                 )
-        else:
-                    container = client.containers.run(
-                    config['container'],
-                    detach=True,
-                    name=args.name,
-                    hostname=args.name,
-                    ports=config['ports'],
-                    volumes=config['volumes'],
-                    privileged=config['privileged'],
-                    tty=config['tty'],
-                    working_dir=config['working_dir'],
-                    environment=config['environment'],
-                    network_mode=config['network_mode'],
-                    devices=config['devices'],
-                    device_requests=config['device_requests'],
-                    mac_address=config['mac_address'],
-                    restart_policy = config['restart_policy'],
-                    remove = config['remove'],
-                    tmpfs = config['tmpfs'],
-                    security_opt = config['security_opt'],
-                    cgroupns = config['cgroupns'],
-                    cap_add = config['cap_add'],
-                    cap_drop = config['cap_drop'],
-                    group_add = config['group_add'],
-                    links = config['links'],
-                    **config_params
-                )
-        logging.info("Container " + args.name + " started!")
+        except docker.errors.APIError as e:
+            logging.error("Unable to start container: " + str(e))
+            return False
+        except docker.errors.ImageNotFound as e:
+            logging.error("Container image not found: " + str(e))
+            return False
+        except Exception as e:
+            logging.error("An unexpected error occurred: " + str(e))
+            return False
+        
+        # And lift off! We have lift off! :)
+        logging.info("Container " + config['name'] + " started!")
 
         # Process commands section (post-start commands in container config)
-        if 'command' in config:
+        if 'execute' in config_extras and config_extras['execute'] is not None:
             logging.debug("Found command block in container configuration")
-            if 'host' in config['command']:
+            if 'host' in config_extras['execute']:
                 logging.debug("Found host commands block in container configuration")
-                if 'post' in config['command']['host']:
-                    logging.info("Executing post-start command on host OS: " + config['command']['host']['post'])
-                    os.system(config['command']['host']['post'])
+                if 'post' in config_extras['execute']['host'] and config_extras['execute']['host']['post'] != "":
+                    logging.info("Executing post-start command on host OS: " + config_extras['execute']['host']['post'])
+                    os.system(config_extras['execute']['host']['post'])
+                else:
+                    logging.info("Host post-start command not found in host commands block or is empty")
             else:
                 logging.info("Host commands not found in container configuration")
 
-            if 'container' in config['command']:
+            if 'container' in config_extras['execute']:
                 logging.debug("Found container commands block in container configuration")
-                if 'post' in config['command']['container']:
+                if 'post' in config_extras['execute']['container'] and config_extras['execute']['container']['post'] != "":
                     logging.debug("Found container post-start command in the configuration")
-                    logging.info("Executing post-start command on container: " + config['command']['container']['post'])
-                    exit_code, output = container.exec_run(config['command']['container']['post'], tty=config['tty'], privileged=config['privileged'], environment=config['environment'])
+                    logging.info("Executing post-start command on container: " + config_extras['execute']['container']['post'])
+                    exit_code, output = container.exec_run(config_extras['execute']['container']['post'], tty=config['tty'], privileged=config['privileged'], environment=config['environment'])
                     logging.info("Command returned code {} with output {}".format(exit_code, output))
-
-                
+                    if exit_code != 0:
+                        logging.error("Container post-start command failed with exit code {}".format(exit_code))
+                else:
+                    logging.info("Container post-start command not found in container commands block or is empty")
         else:
             logging.info("Command block not found in container configuration")
 
@@ -674,6 +673,21 @@ def main(args, loglevel):
 
   # Loading the configuration
   cfg = parse_config(args, loglevel, args.config)
+  
+  # Adjust logging level if needed and not set from command line
+  if 'logging' in cfg and 'level' in cfg['logging'] and args.verbose == False:
+      if cfg['logging']['level'].lower() == 'debug':
+          logging.getLogger().setLevel(logging.DEBUG)
+      elif cfg['logging']['level'].lower() == 'info':
+          logging.getLogger().setLevel(logging.INFO)
+      elif cfg['logging']['level'].lower() == 'warning':
+          logging.getLogger().setLevel(logging.WARNING)
+      elif cfg['logging']['level'].lower() == 'error':
+          logging.getLogger().setLevel(logging.ERROR)
+      elif cfg['logging']['level'].lower() == 'critical':
+          logging.getLogger().setLevel(logging.CRITICAL)
+      else:
+          logging.warning("Unknown logging level '%s' in the configuration or command line set to verbose logging. Using command-line/default value." % cfg['logging']['level'])
 
   # Main program code
   logging.info("SYSTEMDock Action: %s" % args.action)

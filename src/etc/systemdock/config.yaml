@@ -7,3 +7,9 @@ path:
         systemd: /usr/lib/systemd/system
 container:
         start_timeout:  120
+docker:
+        base_url: unix:///var/run/docker.sock
+        api_version: auto
+        timeout: 10
+logging:
+        level: INFO
