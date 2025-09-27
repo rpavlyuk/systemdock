@@ -42,6 +42,7 @@ systemdock -a list
 sudo systemdock -v -a add --name tomcat -d "tomcat:9.0"
 ```
 * Check out file ```/etc/systemdock/containers.d/[NAME]/config.yml``` (in our example: ```/etc/systemdock/containers.d/tomcat/config.yml```) and add additional options like port forwarding and file mounts if needed. See ```examples``` for more information on options.
+Options correspond to Containers.run() function parameters. Please, see the reference here: https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run
 * You can check if the service is listed in those that are managed by SystemDock:
 ```
 systemdock -a list
@@ -71,6 +72,35 @@ sudo systemctl stop systemdock-tomcat
 ```
 sudo systemdock -v -a remove --name tomcat
 ```
+## Developing SystemDock
+Enhancing SystemDock is easy -- it already has Vagrant-based dev environment configuration.
+* Install [Vagrant](https://developer.hashicorp.com/vagrant) and (most likely) [VirtualBox](https://www.virtualbox.org/wiki/Downloads) which Vagrant is using as default hypervisor.
+* Go to ```SystemDock``` source root and init the Vagrant:
+```
+vagrant init
+```
+* Start and provision the VM:
+```
+vagrant up --provision
+```
+* Access the VM and install SystemDock:
+```
+vagrant ssh
+...
+cd /srv/systemdock
+sudo make install
+sudo systemdock -a list
+```
+* Re-install SystemDock from host (your development) machine:
+```
+vagrant rsync && vagrant ssh -c "cd /srv/systemdock && sudo make install"
+```
+* Stop and (optionally) destroy the VM once you're done:
+```
+vagrant halt
+vagrant destroy -f
+```
+
 
 ## TODO
 * Test on other distros: Ubuntu, SUSE, etc

@@ -103,3 +103,9 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# Vagrant files
+.vagrant/
+
+# IDEs and editors
+.vscode/
