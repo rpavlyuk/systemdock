@@ -159,6 +159,9 @@ def migrate_and_split_config(config_in: Dict[str, Any]) -> Tuple[Dict[str, Any],
 
 # Add new service
 def add_service(args, cfg):
+    """
+    Add new container configuration and register it as a SystemD service.
+    """
 
     # Check if the arguments are set
     if args.docker is None:
@@ -233,6 +236,9 @@ def add_service(args, cfg):
 # Remove the service
 #
 def remove_service(args, cfg):
+    """
+    Remove container configuration and unregister it as a SystemD service.
+    """
 
     # Make sure that "name" is not missing
     if args.name is None:
@@ -261,7 +267,7 @@ def remove_service(args, cfg):
 
 
 #
-# Start Service
+# Start the container service
 #
 def start_service(args, cfg):
 
@@ -358,9 +364,18 @@ def start_service(args, cfg):
     base_config = make_profile_config(args)
 
     # 2. Now, let's copy parameters from the loaded configuration to the target container configuration
-    for key in base_config:
-        if key in config:
-            config_params[key] = config[key]
+    if 'container' in cfg and 'enable_user_options' in cfg['container'] and cfg['container']['enable_user_options']:
+        logging.info("User options are enabled. All options from the configuration will be passed to docker-py run() function")
+        config_params = copy.deepcopy(config)
+    else:
+        logging.info("User options are disabled. Only known options from the configuration will be passed to docker-py run() function")
+        for key in base_config:
+            if key in config:
+                config_params[key] = config[key]
+
+    # Dump the final configuration for debug purposes
+    logging.debug("Container (docker.run) configuration:\n" + str(config_params))
+    logging.debug("Container (SystemDock extras) configuration:\n" + str(config_extras))
 
     ##
     # Now, let's try to starting the container

@@ -5,9 +5,10 @@ path:
         services: /etc/systemdock/containers.d
         template: /usr/share/systemdock/templates/systemdock-container.service.template
         systemd: /usr/lib/systemd/system
-container:
-        start_timeout:  120
-docker:
+container:                                              # Container runtime parameters  
+        start_timeout:  120                             # Timeout in seconds to wait for container to start before giving up and marking it as failed
+        enable_user_options: false                      # Allow Systemdock to accept any option from container config and pass it to `docker run`
+docker:                                                 # Docker API client parameters
         base_url: unix:///var/run/docker.sock
         api_version: auto
         timeout: 10

@@ -43,6 +43,7 @@ sudo systemdock -v -a add --name tomcat -d "tomcat:9.0"
 ```
 * Check out file ```/etc/systemdock/containers.d/[NAME]/config.yml``` (in our example: ```/etc/systemdock/containers.d/tomcat/config.yml```) and add additional options like port forwarding and file mounts if needed. See ```examples``` for more information on options.
 Options correspond to Containers.run() function parameters. Please, see the reference here: https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run
+* **NOTE**: You may either allow SystemDock to use only validated set of startup options or allow it to accept any other parameters which [Containers.run()](https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run) function can support. This setting can be controlled in SystemDock's configuration file (by default: ```/etc/systemdock/config.yaml```) by using parameter ```container.enable_user_options```.
 * You can check if the service is listed in those that are managed by SystemDock:
 ```
 systemdock -a list
