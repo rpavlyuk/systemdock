@@ -519,7 +519,7 @@ def start_service(args, cfg):
 
                     # If container has found gone and keep_alive is enabled then we will try to recover it
                     container.reload()
-                    if container.status != 'running' and  config['keep_alive']:
+                    if container.status != 'running' and  config_extras['keep_alive']:
                         logging.warning("Container is not running and keep_alive is enabled. Will try to recover it!")
                         start_service(args, cfg)
 
