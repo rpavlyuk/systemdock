@@ -636,7 +636,7 @@ def list_service(args, cfg):
                 service_enabled = "ENABLED"
 
         # Okay, now let's print all the information:
-        print("Container (container) name: %s" % args.name)
+        print("Profile (container) name: %s" % args.name)
         print("SystemD Service: %s" % service)
         print("SystemD Service state: %s" % service_state)
         print("SystemD Service mode: %s" % service_enabled)
