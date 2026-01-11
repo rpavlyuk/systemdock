@@ -619,7 +619,7 @@ def list_service(args, cfg):
         # Read the configuration
         logging.debug("Loading profile configuration from " + config_file)
         with open(config_file, 'r') as ymlfile:
-            config = yaml.load(ymlfile)
+            config = yaml.load(ymlfile, Loader=Loader)
 
         # now, let's find the service information
         service = "NONE"
@@ -636,7 +636,7 @@ def list_service(args, cfg):
                 service_enabled = "ENABLED"
 
         # Okay, now let's print all the information:
-        print("Profile name: %s" % args.name)
+        print("Container (container) name: %s" % args.name)
         print("SystemD Service: %s" % service)
         print("SystemD Service state: %s" % service_state)
         print("SystemD Service mode: %s" % service_enabled)
